@@ -1,0 +1,134 @@
+\documentclass{beamer}
+
+\title{You could've invented Strassen's Algorithm}
+\author{Zeke}
+\date{July 2025}
+
+\def\shrug{\texttt{\raisebox{0.75em}{\char`\_}\char`\\\char`\_\kern-0.5ex(\kern-0.25ex\raisebox{0.25ex}{\rotatebox{45}{\raisebox{-.75ex}"\kern-1.5ex\rotatebox{-90})}}\kern-0.5ex)\kern-0.5ex\char`\_/\raisebox{0.75em}{\char`\_}}}
+
+\begin{document}
+
+\maketitle
+
+\begin{frame}{Matrix Multiplication}
+    Given two $2\times 2$ matrices $A,B$
+    \[
+    A=\begin{pmatrix}
+    a_{11} & a_{12}\\
+    a_{21} & a_{22}
+    \end{pmatrix},\qquad
+    B=\begin{pmatrix}
+    b_{11} & b_{12}\\
+    b_{21} & b_{22}
+    \end{pmatrix}
+    \]
+    \pause Their product $C=AB$ is
+    \[
+    C = \begin{pmatrix}
+    a_{11}b_{11}+a_{12}b_{21} & a_{11}b_{12}+a_{12}b_{22}\\
+    a_{21}b_{11}+a_{22}b_{21} & a_{21}b_{12}+a_{22}b_{22}
+    \end{pmatrix}
+    \]
+    \pause But computing $C$ requires $8$ multiplications. Can we do better?
+\end{frame}
+
+\begin{frame}{Strassen's Algorithm}
+    Remarkably, yes. $C$ can be computed with $7$ multiplications.
+    \begin{align*}
+    P_1 &= (a_{11}+a_{22})(b_{11}+b_{22})\\
+    P_2 &= (a_{21}+a_{22}) b_{11}\\
+    P_3 &= a_{11} (b_{12}-b_{22})\\
+    P_4 &= a_{22} (b_{21}-b_{11})\\
+    P_5 &= (a_{11}+a_{12}) b_{22}\\
+    P_6 &= (a_{21}-a_{11})(b_{11}+b_{12})\\
+    P_7 &= (a_{12}-a_{22})(b_{21}+b_{22})
+    \end{align*}
+    \[
+    C =
+    \begin{pmatrix}
+    P_1 + P_4 - P_5 + P_7 & P_3 + P_5\\
+    P_2 + P_4 & P_1 - P_2 + P_3 + P_6
+    \end{pmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{My Hackathon Project}
+\begin{enumerate}
+    \item[-] But this is arcane...
+        \[
+        C =
+        \begin{pmatrix}
+        P_1 + P_4 - P_5 + P_7 & P_3 + P_5\\
+        P_2 + P_4 & P_1 - P_2 + P_3 + P_6
+        \end{pmatrix}
+        \]
+    \item[-] \pause What if we could automatically discover this with a computer program?
+    \item[-] \pause Would we learn something about optimizing machine learning workloads along the way?
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{An algebra problem}
+    \begin{enumerate}
+        \item Let $\bar{a}$ be $(a_{11},a_{12},a_{21},a_{22})$ and $\bar{b}$, $\bar{c}$ be likewise.\pause
+        \item Neither $a_{ij} a_{kl}$ nor $b_{ij} b_{kl}$ appears in $C$.\pause So, the $k$th product will be of the form \[
+        P_k = (\sum_i \bar{a}_i\mu^{(k)}_i)(\sum_j \bar{b}_j\varphi^{(k)}_j)
+        \]
+        where $\mu^{(k)}_i,\varphi^{(k)}_i\in\{0,1\}$ are $1$ if and only if $\bar{a}_i$/$\bar{b}_j$ appear in the $k$th product.
+    \end{enumerate}
+\end{frame}
+\begin{frame}{An algebra problem}
+    \begin{enumerate}
+        \item $\bar{c}_l$ will be a combination of $P_k$s.\pause
+        \item Letting $w_l^{(k)}\in\{-1,0,1\}$ denote $P_k$'s coefficient in the expression for $\bar{c}_l$, \[
+        \bar{c}_l = \sum_kw_l^{(k)}P_k
+        \]
+    \end{enumerate}
+\end{frame}
+\begin{frame}{Putting it together}
+\[
+    \begin{aligned}
+        \bar{c}_l &= \sum_kw_l^{(k)}P_k \\
+        &= \sum_kw_l^{(k)}(\sum_i \bar{a}_i\mu^{(k)}_i)(\sum_j \bar{b}_j\varphi^{(k)}_j) \\
+        &= \sum_kw_l^{(k)}\sum_i\sum_j\bar{a}_i\bar{b}_j\mu^{(k)}_i\varphi^{(k)}_j \\
+        &= \sum_i\sum_j\bar{a}_i\bar{b}_j\sum_kw_l^{(k)}\mu^{(k)}_i\varphi^{(k)}_j
+    \end{aligned}
+\]
+\end{frame}
+\begin{frame}{8 multiply equivalence}
+\begin{enumerate}
+    \item To make this an algebra problem, we need a formula for $\bar{c}_l$.
+    \item \pause Recall, $\bar{c}$ is a flattened version of
+    \[
+    C = \begin{pmatrix}
+    \bar{a}_1\bar{b}_1+\bar{a}_2\bar{b}_3 & \bar{a}_1\bar{b}_2+\bar{a}_2\bar{b}_4 \\
+    \bar{a}_3\bar{b}_1+\bar{a}_4\bar{b}_3 & \bar{a}_3\bar{b}_2+\bar{a}_4\bar{b}_4
+    \end{pmatrix}
+    \]
+    \item \pause Leting $T_{ijl}$ be $1$ if $\bar{a}_i\bar{b}_j$ appears in the above expression for $\bar{c}_l$ and $0$ otherwise gives a formula for $\bar{c}_l$ as desired. \[
+    \bar{c}_l = \sum_i\sum_j\bar{a}_i\bar{b}_jT_{ijl}
+    \]
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{Putting it together}
+    Because \[
+    \bar{c}_l = \sum_i\sum_j\bar{a}_i\bar{b}_j\sum_kw_l^{(k)}\mu^{(k)}_i\varphi^{(k)}_j
+    \]
+    and \[
+    \bar{c}_l = \sum_i\sum_j\bar{a}_i\bar{b}_jT_{ijl}
+    \]
+    we have \[
+    T_{ijl} = \sum_kw_l^{(k)}\mu^{(k)}_i\varphi^{(k)}_j
+    \]
+    \pause an algebra problem, the solution of which corresponds to a way to compute $C=AB$ using $k$ multiplies.
+\end{frame}
+
+\begin{frame}{Conclusion}
+\begin{enumerate}
+    \item If you put this into a computer program for solving algebra problems, it finds Strassen's algorithm. :) \pause
+    \item Have we learned something deep about optimizing machine learning workloads? \pause \shrug
+    \item \pause Thanks for having me!
+\end{enumerate}
+\end{frame}
+
+\end{document}
