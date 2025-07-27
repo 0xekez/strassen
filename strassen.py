@@ -1,49 +1,78 @@
 import z3
 from itertools import product
 
+def lex_leq(a, b):
+    if not a:
+        return True
+    return z3.Or(a[0] <  b[0],
+                z3.And(a[0] == b[0],
+                       lex_leq(a[1:], b[1:])))
+
 multiplications = 7
+a_dim = [2,2]
+b_dim = [2,2]
+assert a_dim[1]==b_dim[0]
+c_dim = [a_dim[0],b_dim[1]]
 
-ones = [
-    (0,0,0),
-    (1,2,0),
+a_size = a_dim[0]*a_dim[1]
+b_size = b_dim[0]*b_dim[1]
+c_size = c_dim[0]*c_dim[1]
 
-    (0,1,1),
-    (1,3,1),
+# with row-major indexing: T_ijl is 1 iff a_ib_j appears in the
+# standard formula for c_l. the code below is derived by converting
+# indexing in the standard formula for c_ij into row-major.
+ones = []
+for i,j in product(range(c_dim[0]),range(c_dim[1])):
+    ones += [(i*a_dim[1]+k,k*b_dim[0]+j,i*c_dim[1]+j) for k in range(a_dim[1])]
 
-    (2,0,2),
-    (3,2,2),
+w = [[z3.Int(f'w_{l}^{k}') for l in range(c_size)] for k in range(multiplications)]
+u = [[z3.Int(f'u_{i}^{k}') for i in range(a_size)] for k in range(multiplications)]
+p = [[z3.Int(f'p_{j}^{k}') for j in range(b_size)] for k in range(multiplications)]
 
-    (2,1,3),
-    (3,3,3),
+terms = [
+    (1 if (i,j,l) in ones else 0) == z3.Sum([w[k][l]*u[k][i]*p[k][j] for k in range(multiplications)])
+    for i,j,l in product(range(a_size),range(b_size),range(c_size))
 ]
-w = [[z3.Int(f'w_{l}^{k}') for l in range(4)] for k in range(multiplications)]
-u = [[z3.Int(f'u_{i}^{k}') for i in range(4)] for k in range(multiplications)]
-v = [[z3.Int(f'v_{j}^{k}') for j in range(4)] for k in range(multiplications)]
 
-equations = [
-    (1 if (i,j,l) in ones else 0) == z3.Sum([w[k][l]*u[k][i]*v[k][j] for k in range(multiplications)])
-    for i,j,l in product(range(4),range(4),range(4))
-]
+for k in range(multiplications):
+    for t in (u[k]+p[k]+w[k]):
+        terms += [z3.Or(t==-1, t==0, t==1)]
+
+# one may flip the sign of P_k and the sign of all w^k_l to create a
+# symmetry P_k is (Σ)(Σ) is (-1)(Σ)(-1)(Σ), another symmetry. only one
+# of (-1)(Σ) and (Σ) will have a positive first term. by prefering
+# one, we prefer a sign for P_k, breaking the symmetries.
+for k in range(multiplications):
+    terms += [
+        z3.Or(*[
+            z3.And(u[k][i]==1,
+                   *[u[k][j]==0 for j in range(i)])
+            for i in range(a_size)
+    ])]
+    terms += [
+        z3.Or(*[
+            z3.And(p[k][i]==1,
+                   *[p[k][j]==0 for j in range(i)])
+            for i in range(b_size)
+    ])]
+
+# P_k should be lexographically ordered, otherwise permuting the order
+# of products creates a symmetry.
+for k in range(multiplications-1):
+    terms += [lex_leq(u[k]+p[k], u[k+1]+p[k+1])]
 
 s = z3.Solver()
-for k in range(multiplications):
-    for t in (u[k]+v[k]+w[k]):
-        s.add(z3.Or(t==-1, t==0, t==1))
-for e in equations:
+for e in terms:
     s.add(e)
 
-# this is a 'cheat' to assert only two matrix elements appear in each
-# summation. we know this doesn't make the problem unsat because the
-# strassen solution has this property. without this the SMT solver
-# takes too long.
-for k in range(multiplications):
-    s.add(z3.Sum([z3.If(u[k][i]!=0,1,0) for i in range(4)]) <= 2)
-    s.add(z3.Sum([z3.If(v[k][j]!=0,1,0) for j in range(4)]) <= 2)
-
-assert s.check()==z3.sat
-m = s.model()
-
-for k in range(multiplications):
-    a = [f'a_{i}' if m[u[k][i]].as_long()==1 else f'-a_{i}' for i in range(4) if m[u[k][i]].as_long()!=0]
-    b = [f'b_{i}' if m[v[k][i]].as_long()==1 else f'-b_{i}' for i in range(4) if m[v[k][i]].as_long()!=0]
-    print(f'P_{k}=({" + ".join(a)})({" + ".join(b)})')
+while s.check() == z3.sat:
+    m = s.model()
+    s.add(z3.Or([v() != m[v] for v in m]))
+    for k in range(multiplications):
+        a = [f'a_{i}' if m[u[k][i]].as_long()==1 else f'-a_{i}' for i in range(a_size) if m[u[k][i]].as_long()!=0]
+        b = [f'b_{i}' if m[p[k][i]].as_long()==1 else f'-b_{i}' for i in range(b_size) if m[p[k][i]].as_long()!=0]
+        print(f'P_{k}=({" + ".join(a)})({" + ".join(b)})')
+    for l in range(c_size):
+        ps = [f'P_{k}' if m[w[k][l]].as_long()==1 else f'-P_{k}' for k in range(multiplications) if m[w[k][l]].as_long()!=0]
+        print(f'c_{l}=({" + ".join(ps)})')
+    print()
